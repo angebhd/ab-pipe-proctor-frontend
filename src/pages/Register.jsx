@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import Logo from '../components/Logo'
 import {
   AlertIcon,
@@ -8,6 +8,7 @@ import {
   LockIcon,
   MailIcon,
   SpinnerIcon,
+  UserIcon,
 } from '../components/icons'
 import { useAuth } from '../hooks/useAuth'
 import { PATHS } from '../routes/paths'
@@ -15,17 +16,21 @@ import { PATHS } from '../routes/paths'
 const inputClasses =
   'w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/25'
 
-function Login() {
-  const [form, setForm] = useState({ email_address: '', password: '' })
+function Register() {
+  const [form, setForm] = useState({
+    first_name: '',
+    last_name: '',
+    email_address: '',
+    department_name: '',
+    password: '',
+    confirmPassword: '',
+  })
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const { login } = useAuth()
+  const { register } = useAuth()
   const navigate = useNavigate()
-  const location = useLocation()
-
-  const redirectTo = location.state?.from?.pathname ?? PATHS.dashboard
 
   const handleChange = (event) => {
     const { name, value } = event.target
@@ -38,21 +43,35 @@ function Login() {
     setIsSubmitting(true)
     setError('')
 
+    if (form.password.length < 8) {
+      setError('Password must be at least 8 characters long.')
+      setIsSubmitting(false)
+      return
+    }
+
+    if (form.password !== form.confirmPassword) {
+      setError('Passwords do not match.')
+      setIsSubmitting(false)
+      return
+    }
+
     try {
-      await login({
+      await register({
+        first_name: form.first_name,
+        last_name: form.last_name,
         email_address: form.email_address,
+        department_name: form.department_name,
         password: form.password,
       })
-      navigate(redirectTo, { replace: true })
+      navigate(PATHS.dashboard, { replace: true })
     } catch (submitError) {
-      setError(submitError.message ?? 'Something went wrong. Please try again.')
+      setError(submitError.message ?? 'Unable to create your account right now.')
       setIsSubmitting(false)
     }
   }
 
   return (
     <div className="flex min-h-screen bg-white">
-      {/* Brand panel */}
       <aside className="relative hidden w-[45%] flex-col justify-between overflow-hidden bg-brand-800 p-12 text-white lg:flex">
         <div
           aria-hidden="true"
@@ -67,11 +86,11 @@ function Login() {
 
         <div className="relative max-w-md">
           <h2 className="text-3xl font-semibold leading-tight tracking-tight">
-            Satellite-based threat detection for the Niger–Benin pipeline.
+            Join PipeProctor and monitor the corridor in real time.
           </h2>
           <p className="mt-4 text-sm leading-relaxed text-brand-100">
-            Monitor the corridor continuously, surface anomalies as they appear,
-            and act before they become incidents.
+            Create your operator account to keep track of detections, pipeline risk,
+            and monitoring insights from one secure dashboard.
           </p>
         </div>
 
@@ -80,16 +99,15 @@ function Login() {
         </p>
       </aside>
 
-      {/* Form panel */}
       <main className="flex w-full flex-col justify-center px-6 py-12 lg:w-[55%] lg:px-20">
         <div className="mx-auto w-full max-w-sm">
           <Logo className="mb-10 lg:hidden" />
 
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-            Sign in
+            Create account
           </h1>
           <p className="mt-2 text-sm text-slate-500">
-            Welcome back. Enter your credentials to reach the dashboard.
+            Start monitoring your pipeline with secure access.
           </p>
 
           {error && (
@@ -103,6 +121,54 @@ function Login() {
           )}
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-5" noValidate>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label
+                  htmlFor="first_name"
+                  className="mb-1.5 block text-sm font-medium text-slate-700"
+                >
+                  First name
+                </label>
+                <div className="relative">
+                  <UserIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                  <input
+                    id="first_name"
+                    name="first_name"
+                    type="text"
+                    required
+                    autoComplete="given-name"
+                    value={form.first_name}
+                    onChange={handleChange}
+                    placeholder="Mucyo"
+                    className={inputClasses}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="last_name"
+                  className="mb-1.5 block text-sm font-medium text-slate-700"
+                >
+                  Last name
+                </label>
+                <div className="relative">
+                  <UserIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                  <input
+                    id="last_name"
+                    name="last_name"
+                    type="text"
+                    required
+                    autoComplete="family-name"
+                    value={form.last_name}
+                    onChange={handleChange}
+                    placeholder="Jean"
+                    className={inputClasses}
+                  />
+                </div>
+              </div>
+            </div>
+
             <div>
               <label
                 htmlFor="email_address"
@@ -120,8 +186,29 @@ function Login() {
                   autoComplete="email"
                   value={form.email_address}
                   onChange={handleChange}
-                  placeholder="mucyo.jean.2026@gmail.com"
-                  aria-invalid={Boolean(error)}
+                  placeholder="mucyo@andrew.cmu.edu"
+                  className={inputClasses}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label
+                htmlFor="department_name"
+                className="mb-1.5 block text-sm font-medium text-slate-700"
+              >
+                Department
+              </label>
+              <div className="relative">
+                <UserIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  id="department_name"
+                  name="department_name"
+                  type="text"
+                  required
+                  value={form.department_name}
+                  onChange={handleChange}
+                  placeholder="Engineering"
                   className={inputClasses}
                 />
               </div>
@@ -141,11 +228,10 @@ function Login() {
                   name="password"
                   type={showPassword ? 'text' : 'password'}
                   required
-                  autoComplete="current-password"
+                  autoComplete="new-password"
                   value={form.password}
                   onChange={handleChange}
-                  placeholder="********"
-                  aria-invalid={Boolean(error)}
+                  placeholder="Minimum 8 characters"
                   className={`${inputClasses} pr-11`}
                 />
                 <button
@@ -163,22 +249,27 @@ function Login() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 text-sm text-slate-600">
-                <input
-                  type="checkbox"
-                  name="remember"
-                  className="size-4 rounded border-slate-300 accent-brand-600"
-                />
-                Remember me
-              </label>
-
-              <Link
-                to={PATHS.forgotPassword}
-                className="text-sm font-medium text-brand-700 hover:text-brand-800 hover:underline"
+            <div>
+              <label
+                htmlFor="confirmPassword"
+                className="mb-1.5 block text-sm font-medium text-slate-700"
               >
-                Forgot password?
-              </Link>
+                Confirm password
+              </label>
+              <div className="relative">
+                <LockIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  id="confirmPassword"
+                  name="confirmPassword"
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  autoComplete="new-password"
+                  value={form.confirmPassword}
+                  onChange={handleChange}
+                  placeholder="Repeat your password"
+                  className={inputClasses}
+                />
+              </div>
             </div>
 
             <button
@@ -190,17 +281,17 @@ function Login() {
               {isSubmitting && (
                 <SpinnerIcon className="size-4 animate-spin" strokeWidth={2.25} />
               )}
-              {isSubmitting ? 'Signing in…' : 'Sign in'}
+              {isSubmitting ? 'Creating account…' : 'Create account'}
             </button>
           </form>
 
           <p className="mt-6 text-center text-sm text-slate-600">
-            Need an account?{' '}
+            Already have an account?{' '}
             <Link
-              to={PATHS.register}
+              to={PATHS.signin}
               className="font-medium text-brand-700 hover:text-brand-800 hover:underline"
             >
-              Create one
+              Sign in
             </Link>
           </p>
         </div>
@@ -209,4 +300,4 @@ function Login() {
   )
 }
 
-export default Login
+export default Register

@@ -6,6 +6,7 @@ import Login from '../pages/Signin'
 import Model from '../pages/Model'
 import Monitoring from '../pages/Monitoring'
 import NotFound from '../pages/NotFound'
+import Register from '../pages/Register'
 import Settings from '../pages/Settings'
 import ProtectedRoute from './ProtectedRoute'
 import PublicRoute from './PublicRoute'
@@ -17,6 +18,7 @@ function AppRoutes() {
       {/* Public */}
       <Route element={<PublicRoute />}>
         <Route path={PATHS.signin} element={<Login />} />
+        <Route path={PATHS.register} element={<Register />} />
         <Route path={PATHS.forgotPassword} element={<ForgotPassword />} />
       </Route>
 
