@@ -1,5 +1,10 @@
 import { SeverityBadge, StatusBadge } from './Badge'
-import { formatKm, formatRelativeDays } from '../lib/detections'
+import {
+  formatKmRange,
+  formatRelativeDays,
+  formatSegment,
+} from '../lib/detections'
+import { getSegment } from '../services/monitoringService'
 
 const cell = 'px-4 py-3 text-sm'
 
@@ -19,7 +24,7 @@ function DetectionTable({ detections, onSelect, emptyMessage = 'No detections ma
         <thead>
           <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
             <th scope="col" className="px-4 py-2.5 font-medium">Detection</th>
-            <th scope="col" className="px-4 py-2.5 font-medium">Location</th>
+            <th scope="col" className="px-4 py-2.5 font-medium">Segment</th>
             <th scope="col" className="px-4 py-2.5 font-medium">Type</th>
             <th scope="col" className="px-4 py-2.5 font-medium">Severity</th>
             <th scope="col" className="px-4 py-2.5 font-medium">Status</th>
@@ -38,9 +43,11 @@ function DetectionTable({ detections, onSelect, emptyMessage = 'No detections ma
                 {detection.id}
               </td>
               <td className={cell}>
-                <span className="block text-slate-900">{detection.site}</span>
+                <span className="block text-slate-900">
+                  {formatSegment(detection.segment)}
+                </span>
                 <span className="block font-mono text-xs text-slate-500">
-                  {formatKm(detection.km)}
+                  {formatKmRange(getSegment(detection.segment))}
                 </span>
               </td>
               <td className={`${cell} text-slate-600`}>{detection.type}</td>

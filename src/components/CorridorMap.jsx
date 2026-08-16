@@ -1,66 +1,86 @@
 import {
   BORDER_KM,
   CORRIDOR_LENGTH_KM,
-  WAYPOINTS,
+  SEGMENTS,
+  SEGMENT_COUNT,
 } from '../services/monitoringService'
-import { SEVERITY, SEVERITY_KEYS } from '../lib/detections'
+import {
+  SEVERITY,
+  SEVERITY_KEYS,
+  formatSegment,
+  worstSeverity,
+} from '../lib/detections'
 
-// Schematic geometry: the corridor is drawn straightened, so distance along
-// the line is corridor kilometres rather than ground position.
+// Schematic geometry: the corridor is drawn straightened and split into its
+// twenty equal segments, so a block's position is its segment, not ground
+// position.
 const WIDTH = 1000
-const HEIGHT = 140
+const HEIGHT = 128
 const PADDING = 28
-const LINE_Y = 62
-const MARKER_Y = LINE_Y - 20
+const BAR_Y = 44
+const BAR_HEIGHT = 30
+const GAP = 3
 
-const toX = (km) => PADDING + (km / CORRIDOR_LENGTH_KM) * (WIDTH - PADDING * 2)
+const INNER_WIDTH = WIDTH - PADDING * 2
+const SLOT = INNER_WIDTH / SEGMENT_COUNT
 
-/** Keeps the first and last labels inside the viewBox instead of clipping. */
-const anchorFor = (km) => {
-  if (km === 0) return 'start'
-  if (km === CORRIDOR_LENGTH_KM) return 'end'
-  return 'middle'
+const toX = (km) => PADDING + (km / CORRIDOR_LENGTH_KM) * INNER_WIDTH
+
+/** brand-100 — cleared: something was found here, and it was dealt with. */
+const CLEARED_FILL = '#d3f8dd'
+/** slate-200 — the segment is quiet on this pass. */
+const QUIET_FILL = '#e2e8f0'
+
+const groupBySegment = (detections) => {
+  const bySegment = new Map()
+
+  for (const detection of detections) {
+    const bucket = bySegment.get(detection.segment)
+    if (bucket) bucket.push(detection)
+    else bySegment.set(detection.segment, [detection])
+  }
+
+  return bySegment
+}
+
+/**
+ * What the block is coloured by: the worst severity still open in the
+ * segment. Cleared detections no longer raise the segment, they only stop it
+ * reading as untouched.
+ */
+function fillFor(open, cleared) {
+  const severity = worstSeverity(open)
+  if (severity) return `var(--color-severity-${severity})`
+  return cleared.length > 0 ? CLEARED_FILL : QUIET_FILL
+}
+
+/** Clicking a segment opens whatever most needs attention inside it. */
+function leadDetection(open, cleared) {
+  const ranked = [...open].sort(
+    (a, b) =>
+      SEVERITY_KEYS.indexOf(a.severity) - SEVERITY_KEYS.indexOf(b.severity) ||
+      new Date(b.detectedAt) - new Date(a.detectedAt),
+  )
+
+  return ranked[0] ?? cleared[0] ?? null
 }
 
 function Schematic({ detections, selectedId, onSelect }) {
+  const bySegment = groupBySegment(detections)
+  const flagged = SEGMENTS.filter(({ id }) =>
+    (bySegment.get(id) ?? []).some((detection) => detection.status !== 'cleared'),
+  ).length
+
   return (
     <svg
       viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
       className="w-full min-w-176"
       role="img"
-      aria-label={`Schematic of the ${CORRIDOR_LENGTH_KM} kilometre corridor with ${detections.length} detections marked`}
+      aria-label={`Schematic of the corridor in ${SEGMENT_COUNT} segments, ${flagged} of them with open detections`}
     >
-      {/* Country legs, split at the Gaya border crossing. */}
-      <line
-        x1={toX(0)}
-        y1={LINE_Y}
-        x2={toX(BORDER_KM)}
-        y2={LINE_Y}
-        stroke="#cbd5e1"
-        strokeWidth="6"
-        strokeLinecap="round"
-      />
-      <line
-        x1={toX(BORDER_KM)}
-        y1={LINE_Y}
-        x2={toX(CORRIDOR_LENGTH_KM)}
-        y2={LINE_Y}
-        stroke="#e2e8f0"
-        strokeWidth="6"
-        strokeLinecap="round"
-      />
-      <line
-        x1={toX(BORDER_KM)}
-        y1={LINE_Y - 9}
-        x2={toX(BORDER_KM)}
-        y2={LINE_Y + 9}
-        stroke="#94a3b8"
-        strokeWidth="1.5"
-      />
-
       <text
         x={toX(BORDER_KM / 2)}
-        y="14"
+        y="16"
         textAnchor="middle"
         fill="#94a3b8"
         fontSize="11"
@@ -70,7 +90,7 @@ function Schematic({ detections, selectedId, onSelect }) {
       </text>
       <text
         x={toX((BORDER_KM + CORRIDOR_LENGTH_KM) / 2)}
-        y="14"
+        y="16"
         textAnchor="middle"
         fill="#94a3b8"
         fontSize="11"
@@ -79,83 +99,124 @@ function Schematic({ detections, selectedId, onSelect }) {
         BENIN
       </text>
 
-      {WAYPOINTS.map(({ km, label }) => (
-        <g key={km}>
-          <line
-            x1={toX(km)}
-            y1={LINE_Y + 8}
-            x2={toX(km)}
-            y2={LINE_Y + 16}
-            stroke="#cbd5e1"
-            strokeWidth="1.5"
-          />
-          <text
-            x={toX(km)}
-            y={LINE_Y + 32}
-            textAnchor={anchorFor(km)}
-            fill="#64748b"
-            fontSize="12"
-          >
-            {label}
-          </text>
-          <text
-            x={toX(km)}
-            y={LINE_Y + 48}
-            textAnchor={anchorFor(km)}
-            fill="#94a3b8"
-            fontSize="11"
-          >
-            {km.toLocaleString('en-US')} km
-          </text>
-        </g>
-      ))}
+      {SEGMENTS.map(({ id }) => {
+        const inSegment = bySegment.get(id) ?? []
+        const open = inSegment.filter(
+          (detection) => detection.status !== 'cleared',
+        )
+        const cleared = inSegment.filter(
+          (detection) => detection.status === 'cleared',
+        )
+        const lead = leadDetection(open, cleared)
+        const isSelected =
+          selectedId != null &&
+          inSegment.some((detection) => detection.id === selectedId)
 
-      {detections.map((detection) => {
-        const isSelected = detection.id === selectedId
+        const x = PADDING + (id - 1) * SLOT
+        const width = SLOT - GAP
+        const isColoured = open.length > 0
 
         return (
           <g
-            key={detection.id}
-            onClick={() => onSelect?.(detection)}
-            className={onSelect ? 'cursor-pointer' : undefined}
+            key={id}
+            onClick={lead && onSelect ? () => onSelect(lead) : undefined}
+            className={lead && onSelect ? 'cursor-pointer' : undefined}
           >
-            {/* Oversized transparent target so the small dot stays clickable. */}
-            <circle cx={toX(detection.km)} cy={MARKER_Y} r="14" fill="transparent" />
-            <line
-              x1={toX(detection.km)}
-              y1={MARKER_Y + 6}
-              x2={toX(detection.km)}
-              y2={LINE_Y - 5}
-              stroke="#cbd5e1"
-              strokeWidth="1.5"
+            <title>
+              {`${formatSegment(id)} — ${
+                inSegment.length === 0
+                  ? 'no detections'
+                  : `${inSegment.length} detection${inSegment.length > 1 ? 's' : ''}, ${open.length} open`
+              }`}
+            </title>
+
+            <rect
+              x={x}
+              y={BAR_Y}
+              width={width}
+              height={BAR_HEIGHT}
+              rx="4"
+              fill={fillFor(open, cleared)}
             />
-            <circle
-              cx={toX(detection.km)}
-              cy={MARKER_Y}
-              r={isSelected ? 8 : 6}
-              fill={`var(--color-severity-${detection.severity})`}
-              stroke="#ffffff"
-              strokeWidth="2"
-            />
+
+            {inSegment.length > 0 && (
+              <text
+                x={x + width / 2}
+                y={BAR_Y + BAR_HEIGHT / 2 + 4}
+                textAnchor="middle"
+                fill={isColoured ? '#ffffff' : '#0b5b1c'}
+                fontSize="11"
+                fontWeight="600"
+              >
+                {inSegment.length}
+              </text>
+            )}
+
             {isSelected && (
-              <circle
-                cx={toX(detection.km)}
-                cy={MARKER_Y}
-                r="12"
+              <rect
+                x={x - 2.5}
+                y={BAR_Y - 2.5}
+                width={width + 5}
+                height={BAR_HEIGHT + 5}
+                rx="6"
                 fill="none"
-                stroke={`var(--color-severity-${detection.severity})`}
-                strokeWidth="1.5"
-                opacity="0.5"
+                stroke="#0f172a"
+                strokeWidth="2"
               />
             )}
+
+            <text
+              x={x + width / 2}
+              y={BAR_Y + BAR_HEIGHT + 20}
+              textAnchor="middle"
+              fill={isSelected ? '#0f172a' : '#64748b'}
+              fontSize="11"
+              fontWeight={isSelected ? '600' : '400'}
+            >
+              {id}
+            </text>
           </g>
         )
       })}
+
+      {/* The Gaya crossing falls inside a segment rather than between two. */}
+      <line
+        x1={toX(BORDER_KM)}
+        y1={BAR_Y - 12}
+        x2={toX(BORDER_KM)}
+        y2={BAR_Y + BAR_HEIGHT + 6}
+        stroke="#64748b"
+        strokeWidth="1.5"
+        strokeDasharray="3 3"
+      />
+
+      <text
+        x={WIDTH - PADDING}
+        y={HEIGHT - 6}
+        textAnchor="end"
+        fill="#94a3b8"
+        fontSize="11"
+      >
+        {`${CORRIDOR_LENGTH_KM.toLocaleString('en-US')} km in ${SEGMENT_COUNT} segments`}
+      </text>
     </svg>
   )
 }
 
-/** The corridor, straightened, with every detection placed by kilometre. */
+function LegendSwatch({ className, style, label }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span
+        className={`size-2.5 rounded-sm ${className}`}
+        style={style}
+        aria-hidden="true"
+      />
+      {label}
+    </span>
+  )
+}
+
+/** The corridor, straightened, as twenty segments coloured by what is open. */
 function CorridorMap({ detections, selectedId, onSelect }) {
   return (
     <div>
@@ -171,16 +232,20 @@ function CorridorMap({ detections, selectedId, onSelect }) {
 
       <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-slate-100 pt-3 text-xs text-slate-600">
         {SEVERITY_KEYS.map((key) => (
-          <span key={key} className="inline-flex items-center gap-1.5">
-            <span
-              className={`size-2.5 rounded-full ${SEVERITY[key].dot}`}
-              aria-hidden="true"
-            />
-            {SEVERITY[key].label}
-          </span>
+          <LegendSwatch
+            key={key}
+            className={SEVERITY[key].bar}
+            label={SEVERITY[key].label}
+          />
         ))}
+        <LegendSwatch
+          style={{ backgroundColor: CLEARED_FILL }}
+          label="Cleared"
+        />
+        <LegendSwatch style={{ backgroundColor: QUIET_FILL }} label="Quiet" />
         <span className="ml-auto text-slate-400">
-          Straightened schematic — position is distance along the corridor
+          A block is one segment, coloured by the worst detection still open in
+          it
         </span>
       </div>
     </div>

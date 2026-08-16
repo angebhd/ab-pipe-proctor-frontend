@@ -5,5 +5,6 @@ export const PATHS = {
   dashboard: '/dashboard',
   monitoring: '/monitoring',
   settings: '/settings',
+  analysis: '/analysis',
   model: '/model',
 }

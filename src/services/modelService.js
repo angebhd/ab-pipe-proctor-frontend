@@ -11,7 +11,7 @@ const MOCK_DELAY_MS = 400
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const MODEL_CARD = {
-  name: 'Prithvi-EO-2.0',
+  name: 'Chroma-EO-2.0',
   source: 'NASA / IBM geospatial foundation model',
   sourceUrl: 'https://huggingface.co/ibm-nasa-geospatial',
   version: 'pp-ft-0.3',

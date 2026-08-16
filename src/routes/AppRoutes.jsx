@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router'
 import PrivateLayout from '../layouts/PrivateLayout'
+import Analysis from '../pages/Analysis'
 import Dashboard from '../pages/Dashboard'
 import ForgotPassword from '../pages/ForgotPassword'
 import Login from '../pages/Signin'
@@ -27,6 +28,7 @@ function AppRoutes() {
         <Route element={<PrivateLayout />}>
           <Route path={PATHS.dashboard} element={<Dashboard />} />
           <Route path={PATHS.monitoring} element={<Monitoring />} />
+          <Route path={PATHS.analysis} element={<Analysis />} />
           <Route path={PATHS.model} element={<Model />} />
           <Route path={PATHS.settings} element={<Settings />} />
         </Route>

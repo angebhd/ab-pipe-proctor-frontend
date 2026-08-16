@@ -143,3 +143,12 @@ export function CheckIcon(props) {
     </svg>
   )
 }
+
+export function UploadIcon(props) {
+  return (
+    <svg {...baseProps} {...props}>
+      <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5" />
+      <path d="M4 14.5V18a2.5 2.5 0 0 0 2.5 2.5h11A2.5 2.5 0 0 0 20 18v-3.5" />
+    </svg>
+  )
+}

@@ -2,8 +2,10 @@ import { SeverityBadge, StatusBadge } from './Badge'
 import {
   formatCoords,
   formatDate,
-  formatKm,
+  formatKmRange,
+  formatSegment,
 } from '../lib/detections'
+import { getSegment } from '../services/monitoringService'
 
 function Field({ label, children, mono = false }) {
   return (
@@ -33,9 +35,9 @@ function DetectionDetail({ detection }) {
       <p className="text-sm leading-relaxed text-slate-600">{detection.note}</p>
 
       <dl className="grid grid-cols-2 gap-4">
-        <Field label="Site">{detection.site}</Field>
-        <Field label="Corridor position" mono>
-          {formatKm(detection.km)}
+        <Field label="Segment">{formatSegment(detection.segment)}</Field>
+        <Field label="Segment span" mono>
+          {formatKmRange(getSegment(detection.segment))}
         </Field>
         <Field label="Coordinates" mono>
           {formatCoords(detection.coords)}

@@ -8,19 +8,26 @@ import Modal from '../components/Modal'
 import PageHeader from '../components/PageHeader'
 import { SearchIcon } from '../components/icons'
 import { useAsyncData } from '../hooks/useAsyncData'
-import { SEVERITY, SEVERITY_KEYS, STATUS, STATUS_KEYS } from '../lib/detections'
-import { monitoringService } from '../services/monitoringService'
+import {
+  SEVERITY,
+  SEVERITY_KEYS,
+  STATUS,
+  STATUS_KEYS,
+  formatSegment,
+} from '../lib/detections'
+import { SEGMENTS, monitoringService } from '../services/monitoringService'
 
 const selectClasses =
   'rounded-lg border border-slate-300 bg-white py-2 pl-3 pr-8 text-sm text-slate-700 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/25'
 
-function matches(detection, { query, severity, status }) {
+function matches(detection, { query, segment, severity, status }) {
+  if (segment !== 'all' && detection.segment !== Number(segment)) return false
   if (severity !== 'all' && detection.severity !== severity) return false
   if (status !== 'all' && detection.status !== status) return false
   if (!query) return true
 
   const haystack =
-    `${detection.id} ${detection.site} ${detection.type}`.toLowerCase()
+    `${detection.id} ${formatSegment(detection.segment)} ${detection.type}`.toLowerCase()
   return haystack.includes(query.trim().toLowerCase())
 }
 
@@ -30,6 +37,7 @@ function Monitoring() {
   )
   const [filters, setFilters] = useState({
     query: '',
+    segment: 'all',
     severity: 'all',
     status: 'all',
   })
@@ -55,7 +63,7 @@ function Monitoring() {
           <div className="space-y-6">
             <Card
               title="Corridor"
-              description="Select a marker to open the detection"
+              description="Segments are coloured by what is open in them; select one to see it"
             >
               <CorridorMap
                 detections={visible}
@@ -72,11 +80,25 @@ function Monitoring() {
                     type="search"
                     value={filters.query}
                     onChange={update('query')}
-                    placeholder="Search by ID, site, or type"
+                    placeholder="Search by ID, segment, or type"
                     aria-label="Search detections"
                     className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/25"
                   />
                 </div>
+
+                <select
+                  value={filters.segment}
+                  onChange={update('segment')}
+                  aria-label="Filter by segment"
+                  className={selectClasses}
+                >
+                  <option value="all">All segments</option>
+                  {SEGMENTS.map(({ id }) => (
+                    <option key={id} value={id}>
+                      {formatSegment(id)}
+                    </option>
+                  ))}
+                </select>
 
                 <select
                   value={filters.severity}
@@ -121,7 +143,7 @@ function Monitoring() {
         open={Boolean(selected)}
         onClose={() => setSelected(null)}
         title={selected ? `Detection ${selected.id}` : ''}
-        description={selected ? selected.site : ''}
+        description={selected ? formatSegment(selected.segment) : ''}
         footer={
           <>
             <button
