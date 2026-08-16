@@ -1,5 +1,29 @@
 const BASE_URL = import.meta.env.VITE_API_URL ?? '/api'
 
+export function stringifyApiError(value) {
+  if (typeof value === 'string') return value
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => stringifyApiError(item))
+      .filter(Boolean)
+      .join(', ')
+  }
+
+  if (value && typeof value === 'object') {
+    if (typeof value.message === 'string' && value.message.trim()) return value.message
+    if (typeof value.msg === 'string' && value.msg.trim()) return value.msg
+    if (typeof value.error === 'string' && value.error.trim()) return value.error
+    if (typeof value.detail !== 'undefined') return stringifyApiError(value.detail)
+
+    const firstEntry = Object.values(value)[0]
+    if (firstEntry) return stringifyApiError(firstEntry)
+
+    return JSON.stringify(value)
+  }
+
+  return String(value ?? 'Request failed')
+}
+
 export class ApiError extends Error {
   constructor(message, status) {
     super(message)
@@ -9,18 +33,19 @@ export class ApiError extends Error {
 }
 
 
-export async function request(path, { method = 'GET', body, ...options } = {}) {
+export async function request(path, { method = 'GET', body, headers, ...options } = {}) {
   const response = await fetch(`${BASE_URL}${path}`, {
-    method,
-    headers: { 'Content-Type': 'application/json', ...options.headers },
-    body: body ? JSON.stringify(body) : undefined,
     ...options,
+    method,
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: body ? JSON.stringify(body) : undefined,
   })
 
   const payload = await response.json().catch(() => null)
 
   if (!response.ok) {
-    throw new ApiError(payload?.message ?? 'Request failed', response.status)
+    const detailMessage = stringifyApiError(payload?.detail ?? payload?.message ?? payload?.error ?? 'Request failed')
+    throw new ApiError(detailMessage, response.status)
   }
 
   return payload

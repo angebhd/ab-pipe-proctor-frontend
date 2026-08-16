@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Card from '../components/Card'
 import PageHeader from '../components/PageHeader'
 import { CheckIcon } from '../components/icons'
 import { useAuth } from '../hooks/useAuth'
+import { authService } from '../services/authService'
+import { stringifyApiError } from '../services/apiClient'
 import { SEVERITY, SEVERITY_KEYS } from '../lib/detections'
 
 const fieldClasses =
@@ -53,9 +55,34 @@ function Checkbox({ name, checked, onChange, label, hint }) {
 }
 
 function Settings() {
-  const { user } = useAuth()
+  const { user, token, updateUser } = useAuth()
   const [form, setForm] = useState(DEFAULTS)
+  const [profile, setProfile] = useState({
+    first_name: user?.first_name ?? '',
+    last_name: user?.last_name ?? '',
+    email_address: user?.email_address ?? user?.email ?? '',
+    department_name: user?.department_name ?? '',
+    created_at: user?.created_at ?? '',
+  })
   const [isSaved, setIsSaved] = useState(false)
+  const [saveError, setSaveError] = useState('')
+
+  useEffect(() => {
+    setProfile({
+      first_name: user?.first_name ?? '',
+      last_name: user?.last_name ?? '',
+      email_address: user?.email_address ?? user?.email ?? '',
+      department_name: user?.department_name ?? '',
+      created_at: user?.created_at ?? '',
+    })
+  }, [user])
+
+  const handleProfileChange = (event) => {
+    const { name, value } = event.target
+    setProfile((current) => ({ ...current, [name]: value }))
+    setIsSaved(false)
+    setSaveError('')
+  }
 
   const handleChange = (event) => {
     const { name, type, value, checked } = event.target
@@ -66,10 +93,41 @@ function Settings() {
     setIsSaved(false)
   }
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault()
-    // TODO: persist through the settings endpoint once the backend exists.
-    setIsSaved(true)
+
+    if (!token) {
+      setSaveError('Your session is no longer valid. Please sign in again.')
+      setIsSaved(false)
+      return
+    }
+
+    try {
+      const updatedUser = await authService.updateProfile(token, profile)
+      updateUser({
+        ...user,
+        ...updatedUser,
+        email: updatedUser.email_address ?? updatedUser.email ?? user?.email ?? '',
+        email_address: updatedUser.email_address ?? updatedUser.email ?? user?.email ?? '',
+        first_name: updatedUser.first_name ?? user?.first_name ?? '',
+        last_name: updatedUser.last_name ?? user?.last_name ?? '',
+        department_name: updatedUser.department_name ?? user?.department_name ?? '',
+        created_at: updatedUser.created_at ?? user?.created_at ?? '',
+        name: `${updatedUser.first_name ?? ''} ${updatedUser.last_name ?? ''}`.trim(),
+      })
+      setProfile({
+        first_name: updatedUser.first_name ?? '',
+        last_name: updatedUser.last_name ?? '',
+        email_address: updatedUser.email_address ?? updatedUser.email ?? '',
+        department_name: updatedUser.department_name ?? '',
+        created_at: updatedUser.created_at ?? '',
+      })
+      setSaveError('')
+      setIsSaved(true)
+    } catch (error) {
+      setIsSaved(false)
+      setSaveError(stringifyApiError(error?.message ?? error ?? 'Unable to save your profile.'))
+    }
   }
 
   return (
@@ -79,39 +137,91 @@ function Settings() {
         description="Tune what the system flags and how your team hears about it."
       />
 
-      <form onSubmit={handleSubmit} className="max-w-3xl space-y-6">
-        <Card title="Account" description="Read-only until the backend is connected">
-          <div className="space-y-5">
-            <Row label="Name" htmlFor="name">
-              <input
-                id="name"
-                className={fieldClasses}
-                value={user?.name ?? ''}
-                disabled
-                readOnly
-              />
-            </Row>
-            <Row label="Email" htmlFor="email">
-              <input
-                id="email"
-                className={fieldClasses}
-                value={user?.email ?? ''}
-                disabled
-                readOnly
-              />
-            </Row>
-            <Row label="Role" htmlFor="role">
-              <input
-                id="role"
-                className={fieldClasses}
-                value={user?.role ?? ''}
-                disabled
-                readOnly
-              />
-            </Row>
-          </div>
-        </Card>
+      <div className="max-w-3xl space-y-6">
+        {/* Account Profile Form - Separate form for account updates only */}
+        <form onSubmit={handleSubmit}>
+          <Card title="Account" description="Update your profile information.">
+            <div className="space-y-5">
+              <Row label="First name" htmlFor="first_name">
+                <input
+                  id="first_name"
+                  name="first_name"
+                  className={fieldClasses}
+                  value={profile.first_name}
+                  onChange={handleProfileChange}
+                />
+              </Row>
+              <Row label="Last name" htmlFor="last_name">
+                <input
+                  id="last_name"
+                  name="last_name"
+                  className={fieldClasses}
+                  value={profile.last_name}
+                  onChange={handleProfileChange}
+                />
+              </Row>
+              <Row label="Email address" htmlFor="email_address">
+                <input
+                  id="email_address"
+                  name="email_address"
+                  className={fieldClasses}
+                  value={profile.email_address}
+                  onChange={handleProfileChange}
+                />
+              </Row>
+              <Row label="Department name" htmlFor="department_name">
+                <input
+                  id="department_name"
+                  name="department_name"
+                  className={fieldClasses}
+                  value={profile.department_name}
+                  onChange={handleProfileChange}
+                />
+              </Row>
+              <Row label="Created at" htmlFor="created_at">
+                <input
+                  id="created_at"
+                  name="created_at"
+                  className={fieldClasses}
+                  value={profile.created_at}
+                  readOnly
+                  disabled
+                />
+              </Row>
+            </div>
 
+            {/* Account save button and status */}
+            <div className="mt-6 flex items-center gap-3 border-t border-slate-200 pt-5">
+              <button
+                type="submit"
+                className="rounded-lg bg-brand-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-800 focus:outline-none focus:ring-2 focus:ring-brand-500/40 focus:ring-offset-2"
+              >
+                Save changes
+              </button>
+
+              {isSaved && (
+                <span
+                  role="status"
+                  className="inline-flex items-center gap-1.5 text-sm text-brand-800"
+                >
+                  <CheckIcon className="size-4" />
+                  Saved successfully.
+                </span>
+              )}
+
+              {saveError && (
+                <span
+                  role="status"
+                  className="inline-flex items-center gap-1.5 text-sm text-red-700"
+                >
+                  {saveError}
+                </span>
+              )}
+            </div>
+          </Card>
+        </form>
+
+        {/* Detection Thresholds Section - No form submission, local state only */}
         <Card
           title="Detection thresholds"
           description="What the model has to see before it raises a detection"
@@ -204,26 +314,7 @@ function Settings() {
             />
           </div>
         </Card>
-
-        <div className="flex items-center gap-3">
-          <button
-            type="submit"
-            className="rounded-lg bg-brand-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-800 focus:outline-none focus:ring-2 focus:ring-brand-500/40 focus:ring-offset-2"
-          >
-            Save changes
-          </button>
-
-          {isSaved && (
-            <span
-              role="status"
-              className="inline-flex items-center gap-1.5 text-sm text-brand-800"
-            >
-              <CheckIcon className="size-4" />
-              Saved locally — not yet sent to a backend.
-            </span>
-          )}
-        </div>
-      </form>
+      </div>
     </>
   )
 }

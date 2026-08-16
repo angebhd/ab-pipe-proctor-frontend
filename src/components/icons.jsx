@@ -55,6 +55,15 @@ export function AlertIcon(props) {
   )
 }
 
+export function UserIcon(props) {
+  return (
+    <svg {...baseProps} {...props}>
+      <circle cx="12" cy="8" r="4" />
+      <path d="M5 19c1.3-3 4-4.5 7-4.5S17.7 16 19 19" />
+    </svg>
+  )
+}
+
 export function SpinnerIcon(props) {
   return (
     <svg {...baseProps} {...props}>

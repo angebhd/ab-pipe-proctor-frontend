@@ -16,12 +16,31 @@ function readStoredSession() {
 function AuthProvider({ children }) {
   const [session, setSession] = useState(readStoredSession)
 
-  const login = useCallback(async (credentials) => {
-    const nextSession = await authService.login(credentials)
+  const persistSession = useCallback((nextSession) => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(nextSession))
     setSession(nextSession)
     return nextSession.user
   }, [])
+
+  const updateUser = useCallback((nextUser) => {
+    const nextSession = session
+      ? { ...session, user: { ...session.user, ...nextUser } }
+      : { token: null, user: nextUser }
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(nextSession))
+    setSession(nextSession)
+    return nextSession.user
+  }, [session])
+
+  const login = useCallback(async (credentials) => {
+    const nextSession = await authService.login(credentials)
+    return persistSession(nextSession)
+  }, [persistSession])
+
+  const register = useCallback(async (payload) => {
+    const nextSession = await authService.register(payload)
+    return persistSession(nextSession)
+  }, [persistSession])
 
   const logout = useCallback(async () => {
     await authService.logout()
@@ -35,9 +54,11 @@ function AuthProvider({ children }) {
       token: session?.token ?? null,
       isAuthenticated: Boolean(session?.token),
       login,
+      register,
       logout,
+      updateUser,
     }),
-    [session, login, logout],
+    [session, login, register, logout, updateUser],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
