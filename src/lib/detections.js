@@ -36,9 +36,27 @@ export const STATUS = {
   cleared: { label: 'Cleared', pill: 'bg-brand-50 text-brand-800 ring-brand-200' },
 }
 
-/** `412` → `KM 412` — the corridor position, as operators refer to it. */
-export function formatKm(km) {
-  return `KM ${km.toLocaleString('en-US')}`
+/**
+ * The highest severity present in a set of detections, or `null` when the set
+ * is empty. Relies on `SEVERITY_KEYS` already being ordered high → low.
+ */
+export function worstSeverity(detections) {
+  return (
+    SEVERITY_KEYS.find((key) =>
+      detections.some((detection) => detection.severity === key),
+    ) ?? null
+  )
+}
+
+/** `11` → `Segment 11` — the corridor position, as operators refer to it. */
+export function formatSegment(segment) {
+  return `Segment ${segment}`
+}
+
+/** The kilometres a segment spans, for the rare place the raw span matters. */
+export function formatKmRange({ startKm, endKm }) {
+  const km = (value) => Math.round(value).toLocaleString('en-US')
+  return `KM ${km(startKm)}–${km(endKm)}`
 }
 
 export function formatCoords({ lat, lon }) {

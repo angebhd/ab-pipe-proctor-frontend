@@ -8,7 +8,6 @@ import DetectionTable from '../components/DetectionTable'
 import DetectionsTrend from '../components/DetectionsTrend'
 import Modal from '../components/Modal'
 import PageHeader from '../components/PageHeader'
-import SeverityBars from '../components/SeverityBars'
 import StatCard from '../components/StatCard'
 import {
   AlertIcon,
@@ -17,9 +16,10 @@ import {
   SatelliteIcon,
 } from '../components/icons'
 import { useAsyncData } from '../hooks/useAsyncData'
-import { formatKm, formatRelativeDays } from '../lib/detections'
+import { formatRelativeDays, formatSegment } from '../lib/detections'
 import {
   CORRIDOR_LENGTH_KM,
+  SEGMENT_COUNT,
   monitoringService,
 } from '../services/monitoringService'
 import { PATHS } from '../routes/paths'
@@ -59,15 +59,15 @@ function Dashboard() {
                 value={highSeverity.length}
                 hint={
                   highSeverity.length > 0
-                    ? `Nearest at ${formatKm(highSeverity[0].km)}`
+                    ? `Worst in ${formatSegment(highSeverity[0].segment)}`
                     : 'Nothing urgent on the corridor'
                 }
                 icon={GaugeIcon}
               />
               <StatCard
-                label="Corridor scanned"
-                value={`${CORRIDOR_LENGTH_KM.toLocaleString('en-US')} km`}
-                hint="Full corridor on the last pass"
+                label="Segments scanned"
+                value={`${data.lastPass.coveredSegments} of ${SEGMENT_COUNT}`}
+                hint={`Full ${CORRIDOR_LENGTH_KM.toLocaleString('en-US')} km corridor on the last pass`}
                 icon={LayersIcon}
               />
               <StatCard
@@ -98,7 +98,7 @@ function Dashboard() {
 
             <Card
               title="Corridor overview"
-              description={`${data.detections.length} detections along ${CORRIDOR_LENGTH_KM.toLocaleString('en-US')} km`}
+              description={`${data.detections.length} detections across ${SEGMENT_COUNT} segments`}
             >
               <CorridorMap
                 detections={data.detections}
@@ -133,7 +133,7 @@ function Dashboard() {
         open={Boolean(selected)}
         onClose={() => setSelected(null)}
         title={selected ? `Detection ${selected.id}` : ''}
-        description={selected ? selected.site : ''}
+        description={selected ? formatSegment(selected.segment) : ''}
       >
         {selected && <DetectionDetail detection={selected} />}
       </Modal>

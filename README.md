@@ -29,6 +29,12 @@ are bundled and served locally — there is no request to a font CDN at runtime.
 The variable sans covers weights 100–700, so avoid `font-extrabold` and
 `font-black`, which the browser would have to synthesize.
 
+**Segments** — the corridor is not addressed by place names. It is split into
+20 equal segments (`SEGMENT_COUNT` in `src/services/monitoringService.js`),
+numbered 1 at Agadem through 20 at the terminal, and every detection carries a
+segment number. The schematic colours a whole segment by the worst severity
+still open in it rather than dropping a dot at a kilometre mark.
+
 **Severity** — detections are coloured by `severity-low` / `severity-medium` /
 `severity-high`. These are status colours, not chart series colours: medium sits
 below 3:1 against white on purpose, so every place they appear also carries a
@@ -39,13 +45,18 @@ text label and the colour never has to be read on its own.
 | Screen | What it does |
 |---|---|
 | `Dashboard` | KPI row, weekly detection trend, active-by-severity split, corridor schematic, recent detections |
-| `Monitoring` | Corridor schematic plus the full detection list, filterable by text, severity, and status |
+| `Monitoring` | Corridor schematic plus the full detection list, filterable by text, segment, severity, and status |
+| `Analysis` | Send one capture — image, capture date, and segment — to the model and read back what it makes of it |
 | `Model` | Model card for the fine-tuned Prithvi-EO-2.0, headline metrics, F1 per epoch, and per-anomaly-type scores |
 | `Settings` | Detection thresholds and notification preferences (local state only) |
 
-Detection data comes from `src/services/monitoringService.js` and model results
-from `src/services/modelService.js` — both mocks that mirror the shapes the
-backend is expected to return. Swap their getters for `apiClient` calls and the
+Detection data comes from `src/services/monitoringService.js`, model results
+from `src/services/modelService.js`, and inference from
+`src/services/analysisService.js` — all three are mocks that mirror the shapes
+the backend is expected to return. `analysisService.analyzeImage` fabricates a
+prediction from a hash of the submitted file, so the same image on the same
+segment always scores the same; swap it for a multipart `apiClient` call once
+the model is served. Swap their getters for `apiClient` calls and the
 pages should not need changes. `src/lib/detections.js` holds the labels, badge
 styles, and formatters shared across pages.
 

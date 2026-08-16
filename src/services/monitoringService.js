@@ -14,26 +14,41 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 export const CORRIDOR_LENGTH_KM = 1950
 
 /**
- * Landmarks along the corridor, used to draw the schematic. Positions are
- * approximate and meant for orientation, not navigation.
+ * The corridor is split into equal numbered segments rather than named
+ * places: the model reports per segment, and operators dispatch per segment,
+ * so a segment number is the only position the whole system agrees on.
  */
-export const WAYPOINTS = [
-  { km: 0, label: 'Agadem', country: 'Niger' },
-  { km: 550, label: 'Zinder', country: 'Niger' },
-  { km: 1050, label: 'Dosso', country: 'Niger' },
-  { km: 1200, label: 'Gaya', country: 'Niger' },
-  { km: 1550, label: 'Parakou', country: 'Benin' },
-  { km: 1950, label: 'Sèmè terminal', country: 'Benin' },
-]
+export const SEGMENT_COUNT = 20
+
+export const SEGMENT_LENGTH_KM = CORRIDOR_LENGTH_KM / SEGMENT_COUNT
 
 /** The border crossing splits the corridor between the two countries. */
 export const BORDER_KM = 1200
 
+export const SEGMENTS = Array.from({ length: SEGMENT_COUNT }, (_, index) => {
+  const startKm = index * SEGMENT_LENGTH_KM
+
+  return {
+    id: index + 1,
+    startKm,
+    endKm: startKm + SEGMENT_LENGTH_KM,
+    // A segment belongs to whichever country holds its midpoint; only the one
+    // straddling the crossing is ambiguous, and it leans to the longer half.
+    country: startKm + SEGMENT_LENGTH_KM / 2 < BORDER_KM ? 'Niger' : 'Benin',
+  }
+})
+
+/** `11` → the segment record. Ids are 1-based, the array is not. */
+export const getSegment = (id) => SEGMENTS[id - 1]
+
+/** `1062` → `11`, for placing anything still reported by kilometre. */
+export const segmentForKm = (km) =>
+  Math.min(SEGMENT_COUNT, Math.floor(km / SEGMENT_LENGTH_KM) + 1)
+
 const DETECTIONS = [
   {
     id: 'PP-2418',
-    km: 1062,
-    site: 'Dosso corridor',
+    segment: 11,
     type: 'Excavation',
     severity: 'high',
     status: 'open',
@@ -45,8 +60,7 @@ const DETECTIONS = [
   },
   {
     id: 'PP-2417',
-    km: 1188,
-    site: 'Gaya approach',
+    segment: 13,
     type: 'Vehicle cluster',
     severity: 'high',
     status: 'reviewing',
@@ -58,8 +72,7 @@ const DETECTIONS = [
   },
   {
     id: 'PP-2415',
-    km: 744,
-    site: 'Zinder east',
+    segment: 8,
     type: 'Ground disturbance',
     severity: 'high',
     status: 'open',
@@ -71,8 +84,7 @@ const DETECTIONS = [
   },
   {
     id: 'PP-2412',
-    km: 1604,
-    site: 'Parakou north',
+    segment: 17,
     type: 'New access track',
     severity: 'medium',
     status: 'reviewing',
@@ -84,8 +96,7 @@ const DETECTIONS = [
   },
   {
     id: 'PP-2409',
-    km: 318,
-    site: 'Agadem south',
+    segment: 4,
     type: 'Ground disturbance',
     severity: 'medium',
     status: 'open',
@@ -97,8 +108,7 @@ const DETECTIONS = [
   },
   {
     id: 'PP-2404',
-    km: 1341,
-    site: 'Kandi plain',
+    segment: 14,
     type: 'Vehicle cluster',
     severity: 'medium',
     status: 'cleared',
@@ -110,8 +120,7 @@ const DETECTIONS = [
   },
   {
     id: 'PP-2398',
-    km: 902,
-    site: 'Birni N’Konni',
+    segment: 10,
     type: 'Excavation',
     severity: 'medium',
     status: 'cleared',
@@ -123,8 +132,7 @@ const DETECTIONS = [
   },
   {
     id: 'PP-2395',
-    km: 1877,
-    site: 'Sèmè approach',
+    segment: 20,
     type: 'Encroachment',
     severity: 'low',
     status: 'open',
@@ -136,8 +144,7 @@ const DETECTIONS = [
   },
   {
     id: 'PP-2390',
-    km: 512,
-    site: 'Termit west',
+    segment: 6,
     type: 'Ground disturbance',
     severity: 'low',
     status: 'cleared',
@@ -149,8 +156,7 @@ const DETECTIONS = [
   },
   {
     id: 'PP-2386',
-    km: 1455,
-    site: 'Bembèrèkè',
+    segment: 15,
     type: 'New access track',
     severity: 'low',
     status: 'cleared',
@@ -181,7 +187,7 @@ const WEEKLY_TREND = [
 const LAST_PASS = {
   id: 'S1A-20260811',
   capturedAt: '2026-08-11T06:12:00Z',
-  coveredKm: CORRIDOR_LENGTH_KM,
+  coveredSegments: SEGMENT_COUNT,
   nextPassAt: '2026-08-17T06:10:00Z',
 }
 

@@ -1,11 +1,18 @@
 import { NavLink } from 'react-router'
 import Logo from './Logo'
-import { GaugeIcon, LayersIcon, MapPinIcon, SlidersIcon } from './icons'
+import {
+  GaugeIcon,
+  LayersIcon,
+  MapPinIcon,
+  SlidersIcon,
+  UploadIcon,
+} from './icons'
 import { PATHS } from '../routes/paths'
 
 const LINKS = [
   { to: PATHS.dashboard, label: 'Dashboard', icon: GaugeIcon },
   { to: PATHS.monitoring, label: 'Monitoring', icon: MapPinIcon },
+  { to: PATHS.analysis, label: 'Analysis', icon: UploadIcon },
   { to: PATHS.model, label: 'Model', icon: LayersIcon },
   { to: PATHS.settings, label: 'Settings', icon: SlidersIcon },
 ]
