@@ -1,54 +1,35 @@
 /**
- * Mock inference for the analysis page: takes one capture, its date, and the
- * corridor segment it covers, and answers with what the model would report.
+ * Change-detection inference for the analysis page: send a reference (baseline)
+ * capture and a current (latest pass) capture for one corridor segment, and
+ * read back where the model sees the strongest change.
  *
- * TODO: swap `analyzeImage` for a multipart `apiClient` call once the backend
- * exposes the model — the payload is already the three fields the endpoint is
- * expected to take (`image`, `captured_at`, `segment`). Nothing here touches
- * the network, so every result below is fabricated, not a measurement.
+ * Wraps `POST /api/v1/change-detection`, documented in
+ * `backend/CHANGE_DETECTION_API.md`. That endpoint takes exactly
+ * `reference_image`, `current_image`, and `segment_id` (multipart) and
+ * returns `{ segment_id, anomaly_score, longitude, latitude, patch_index,
+ * patch_row, patch_col }` — no capture dates, no severity label. The latter
+ * is derived here so the rest of the app can keep using the shared
+ * `SEVERITY` keys.
  */
 
-import { SEGMENT_COUNT } from './monitoringService'
-
-const MOCK_DELAY_MS = 1400
-
-const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+import { apiClient } from './apiClient'
 
 export const MAX_FILE_BYTES = 15 * 1024 * 1024
 
-/** GeoTIFF sits alongside the ordinary web formats: SAR tiles arrive as TIFF. */
-export const ACCEPTED_TYPES = [
-  'image/png',
-  'image/jpeg',
-  'image/tiff',
-  'image/webp',
-]
+/** The model only accepts GeoTIFF SAR chips (2 bands, VV + VH). */
+export const ACCEPTED_TYPES = ['image/tiff', 'image/tif']
+export const ACCEPT_ATTRIBUTE = '.tif,.tiff,image/tiff'
 
-export const ACCEPT_ATTRIBUTE = '.png,.jpg,.jpeg,.tif,.tiff,.webp,image/*'
+/**
+ * `.tif`/`.tiff` MIME sniffing is unreliable across browsers and OSes (many
+ * report `application/octet-stream` or nothing at all), so acceptance is
+ * decided by extension; the backend still enforces content-type itself.
+ */
+const TIFF_EXTENSION = /\.tiff?$/i
 
-const ANOMALY_TYPES = [
-  'Ground disturbance',
-  'Excavation',
-  'Vehicle cluster',
-  'New access track',
-  'Encroachment',
-]
-
-/** FNV-1a, so the same capture on the same segment always scores the same. */
-function hash(value) {
-  let result = 2166136261
-
-  for (let index = 0; index < value.length; index += 1) {
-    result ^= value.charCodeAt(index)
-    result = Math.imul(result, 16777619)
-  }
-
-  return result >>> 0
-}
-
-const severityFor = (confidence) => {
-  if (confidence >= 0.85) return 'high'
-  if (confidence >= 0.7) return 'medium'
+const severityFor = (anomalyScore) => {
+  if (anomalyScore >= 1.5) return 'high'
+  if (anomalyScore >= 0.8) return 'medium'
   return 'low'
 }
 
@@ -58,50 +39,61 @@ export function formatFileSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+/**
+ * Rejects what the model cannot read before a request is ever made — the
+ * file picker's `accept` is a hint, and a drop bypasses it entirely.
+ */
+export function rejectionFor(file) {
+  if (!TIFF_EXTENSION.test(file.name)) {
+    return 'That file is not a TIFF. The model reads GeoTIFF SAR chips (.tif/.tiff) only.'
+  }
+  if (file.size > MAX_FILE_BYTES) {
+    return `That file is ${formatFileSize(file.size)}. The model takes up to ${formatFileSize(MAX_FILE_BYTES)}.`
+  }
+  return ''
+}
+
 export const analysisService = {
   /**
-   * @param {{ file: File, capturedAt: string, segment: number }} submission
-   *   `capturedAt` is a `YYYY-MM-DD` date, `segment` a 1-based segment number.
+   * @param {{ referenceFile: File, currentFile: File, segmentId: string }} submission
+   *   `segmentId` is the model's own id for the segment (e.g.
+   *   `P1328_SEG_0020`), sourced from `SEGMENTS` in `monitoringService` —
+   *   never guessed or reconstructed here.
    */
-  analyzeImage: async ({ file, capturedAt, segment }) => {
-    if (!file) {
-      throw new Error('Choose a capture to analyse.')
+  analyzeImage: async ({ referenceFile, currentFile, segmentId }) => {
+    if (!referenceFile) {
+      throw new Error('Choose a reference capture — the known-clear baseline for this segment.')
     }
-    if (file.size > MAX_FILE_BYTES) {
-      throw new Error(
-        `That file is ${formatFileSize(file.size)}. The model takes up to ${formatFileSize(MAX_FILE_BYTES)}.`,
-      )
+    if (!currentFile) {
+      throw new Error('Choose a current capture — the latest satellite pass to compare.')
     }
-    if (!capturedAt) {
-      throw new Error('Give the date the image was captured.')
+    for (const file of [referenceFile, currentFile]) {
+      const rejection = rejectionFor(file)
+      if (rejection) throw new Error(rejection)
     }
-    if (!(segment >= 1 && segment <= SEGMENT_COUNT)) {
-      throw new Error(`Pick a segment between 1 and ${SEGMENT_COUNT}.`)
+    if (!segmentId) {
+      throw new Error('Pick the segment these captures cover.')
     }
 
-    await wait(MOCK_DELAY_MS)
+    const formData = new FormData()
+    formData.append('reference_image', referenceFile)
+    formData.append('current_image', currentFile)
+    formData.append('segment_id', segmentId)
 
-    const seed = hash(`${file.name}:${file.size}:${capturedAt}:${segment}`)
-    const anomalyDetected = (seed % 1000) / 1000 >= 0.35
-    const confidence = anomalyDetected
-      ? 0.55 + ((seed >>> 8) % 430) / 1000
-      : 0.62 + ((seed >>> 8) % 350) / 1000
-    const area = (0.2 + ((seed >>> 16) % 90) / 100).toFixed(1)
+    const response = await apiClient.post('/api/v1/change-detection', formData)
 
     return {
-      id: `AN-${String(seed % 10000).padStart(4, '0')}`,
-      fileName: file.name,
-      fileSize: file.size,
-      segment,
-      capturedAt,
+      segmentId: response.segment_id,
+      anomalyScore: response.anomaly_score,
+      severity: severityFor(response.anomaly_score),
+      latitude: response.latitude,
+      longitude: response.longitude,
+      patchIndex: response.patch_index,
+      patchRow: response.patch_row,
+      patchCol: response.patch_col,
+      referenceFileName: referenceFile.name,
+      currentFileName: currentFile.name,
       analyzedAt: new Date().toISOString(),
-      anomalyDetected,
-      type: anomalyDetected ? ANOMALY_TYPES[seed % ANOMALY_TYPES.length] : null,
-      severity: anomalyDetected ? severityFor(confidence) : null,
-      confidence,
-      note: anomalyDetected
-        ? `Change signature across roughly ${area} ha inside segment ${segment}, no matching work order.`
-        : `No change beyond seasonal variation across segment ${segment}.`,
     }
   },
 }

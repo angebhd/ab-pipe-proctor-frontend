@@ -34,11 +34,15 @@ export class ApiError extends Error {
 
 
 export async function request(path, { method = 'GET', body, headers, ...options } = {}) {
+  // Multipart bodies must keep the browser-generated boundary in
+  // Content-Type, so JSON encoding (and its header) only applies elsewhere.
+  const isFormData = body instanceof FormData
+
   const response = await fetch(`${BASE_URL}${path}`, {
     ...options,
     method,
-    headers: { 'Content-Type': 'application/json', ...headers },
-    body: body ? JSON.stringify(body) : undefined,
+    headers: isFormData ? headers : { 'Content-Type': 'application/json', ...headers },
+    body: isFormData ? body : body ? JSON.stringify(body) : undefined,
   })
 
   const payload = await response.json().catch(() => null)
