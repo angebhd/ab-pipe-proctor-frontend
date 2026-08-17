@@ -25,11 +25,42 @@ export const SEGMENT_LENGTH_KM = CORRIDOR_LENGTH_KM / SEGMENT_COUNT
 /** The border crossing splits the corridor between the two countries. */
 export const BORDER_KM = 1200
 
+/**
+ * The model's own id for each segment, in order — the `segment_id` column of
+ * `backend/model_app/data/chips_metadata_v2.csv`, the chip inventory the
+ * change-detection model actually looks up. This is what the Analysis page
+ * must send back to the model, so it is read from that source rather than
+ * pattern-guessed.
+ */
+const CHIP_SEGMENT_IDS = [
+  'P1328_SEG_0001',
+  'P1328_SEG_0002',
+  'P1328_SEG_0003',
+  'P1328_SEG_0004',
+  'P1328_SEG_0005',
+  'P1328_SEG_0006',
+  'P1328_SEG_0007',
+  'P1328_SEG_0008',
+  'P1328_SEG_0009',
+  'P1328_SEG_0010',
+  'P1328_SEG_0011',
+  'P1328_SEG_0012',
+  'P1328_SEG_0013',
+  'P1328_SEG_0014',
+  'P1328_SEG_0015',
+  'P1328_SEG_0016',
+  'P1328_SEG_0017',
+  'P1328_SEG_0018',
+  'P1328_SEG_0019',
+  'P1328_SEG_0020',
+]
+
 export const SEGMENTS = Array.from({ length: SEGMENT_COUNT }, (_, index) => {
   const startKm = index * SEGMENT_LENGTH_KM
 
   return {
     id: index + 1,
+    segmentId: CHIP_SEGMENT_IDS[index],
     startKm,
     endKm: startKm + SEGMENT_LENGTH_KM,
     // A segment belongs to whichever country holds its midpoint; only the one
