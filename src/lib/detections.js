@@ -1,7 +1,11 @@
 /**
- * Display metadata for a detection. Severity and status keys come from the
- * API; everything the UI needs to render them lives here so pages, tables,
- * charts, and the corridor map all label them the same way.
+ * Display metadata for a detection, and the small amount of interpretation the
+ * API leaves to the client.
+ *
+ * The backend stores `anomaly_type` and `anomaly_status` as fixed enums and
+ * reports a `confidence`; it has no notion of severity. Both the enum labels
+ * and the severity rule live here so pages, tables, charts, and the corridor
+ * map all read a detection the same way.
  */
 
 /** Ordered high → low, which is the order the UI lists them in. */
@@ -28,13 +32,41 @@ export const SEVERITY = {
   },
 }
 
-export const STATUS_KEYS = ['open', 'reviewing', 'cleared']
+/**
+ * Severity is not stored: it is a reading of the model's confidence, applied
+ * consistently so a "high" in the table means the same as a "high" on the map.
+ */
+export const SEVERITY_THRESHOLDS = { high: 0.85, medium: 0.7 }
+
+export function severityFor(confidence) {
+  if (confidence >= SEVERITY_THRESHOLDS.high) return 'high'
+  if (confidence >= SEVERITY_THRESHOLDS.medium) return 'medium'
+  return 'low'
+}
+
+/** `anomaly_status` values, in the order a detection moves through them. */
+export const STATUS_KEYS = ['detected', 'investigating', 'resolved']
 
 export const STATUS = {
-  open: { label: 'Open', pill: 'bg-slate-100 text-slate-700 ring-slate-200' },
-  reviewing: { label: 'In review', pill: 'bg-blue-50 text-blue-700 ring-blue-200' },
-  cleared: { label: 'Cleared', pill: 'bg-brand-50 text-brand-800 ring-brand-200' },
+  detected: { label: 'Detected', pill: 'bg-slate-100 text-slate-700 ring-slate-200' },
+  investigating: { label: 'Investigating', pill: 'bg-blue-50 text-blue-700 ring-blue-200' },
+  resolved: { label: 'Resolved', pill: 'bg-brand-50 text-brand-800 ring-brand-200' },
 }
+
+/** A detection still needs attention until someone resolves it. */
+export const isOpen = (detection) => detection.status !== 'resolved'
+
+/** `anomaly_type` values the API accepts. */
+export const ANOMALY_TYPE_KEYS = ['oil_spill', 'land_excavation', 'fire_outbreak']
+
+export const ANOMALY_TYPES = {
+  oil_spill: { label: 'Oil spill' },
+  land_excavation: { label: 'Land excavation' },
+  fire_outbreak: { label: 'Fire outbreak' },
+}
+
+/** Falls back to the raw value so an enum added server-side still renders. */
+export const anomalyTypeLabel = (type) => ANOMALY_TYPES[type]?.label ?? type
 
 /**
  * The highest severity present in a set of detections, or `null` when the set
@@ -50,13 +82,14 @@ export function worstSeverity(detections) {
 
 /** `11` → `Segment 11` — the corridor position, as operators refer to it. */
 export function formatSegment(segment) {
-  return `Segment ${segment}`
+  return segment == null ? 'Off corridor' : `Segment ${segment}`
 }
 
 /** The kilometres a segment spans, for the rare place the raw span matters. */
-export function formatKmRange({ startKm, endKm }) {
+export function formatKmRange(segment) {
+  if (!segment) return '—'
   const km = (value) => Math.round(value).toLocaleString('en-US')
-  return `KM ${km(startKm)}–${km(endKm)}`
+  return `KM ${km(segment.startKm)}–${km(segment.endKm)}`
 }
 
 export function formatCoords({ lat, lon }) {

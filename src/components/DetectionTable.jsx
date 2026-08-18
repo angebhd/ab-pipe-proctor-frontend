@@ -1,10 +1,11 @@
 import { SeverityBadge, StatusBadge } from './Badge'
 import {
+  anomalyTypeLabel,
   formatKmRange,
   formatRelativeDays,
   formatSegment,
 } from '../lib/detections'
-import { getSegment } from '../services/monitoringService'
+import { getSegment } from '../lib/corridor'
 
 const cell = 'px-4 py-3 text-sm'
 
@@ -39,8 +40,10 @@ function DetectionTable({ detections, onSelect, emptyMessage = 'No detections ma
               onClick={() => onSelect?.(detection)}
               className={onSelect ? 'cursor-pointer hover:bg-slate-50' : undefined}
             >
-              <td className={`${cell} font-mono text-slate-900`}>
-                {detection.id}
+              {/* Detection ids are uuids; the leading block is enough to
+                  recognise a row, and the dialog shows the whole thing. */}
+              <td className={`${cell} font-mono text-slate-900`} title={detection.id}>
+                {detection.id.slice(0, 8)}
               </td>
               <td className={cell}>
                 <span className="block text-slate-900">
@@ -50,7 +53,9 @@ function DetectionTable({ detections, onSelect, emptyMessage = 'No detections ma
                   {formatKmRange(getSegment(detection.segment))}
                 </span>
               </td>
-              <td className={`${cell} text-slate-600`}>{detection.type}</td>
+              <td className={`${cell} text-slate-600`}>
+                {anomalyTypeLabel(detection.type)}
+              </td>
               <td className={cell}>
                 <SeverityBadge severity={detection.severity} />
               </td>

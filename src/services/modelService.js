@@ -1,83 +1,101 @@
 /**
- * Mock model card and evaluation results for the detection model, standing in
- * until training runs are logged somewhere the frontend can read.
+ * What the detection model is, and what it has actually produced.
  *
- * TODO: swap for `apiClient.get('/model/current')` once the pipeline reports
- * its runs. Numbers here are placeholders, not measured results.
+ * The card below describes the pipeline the backend runs — the CROMA SAR
+ * encoder, its input contract, and how a change becomes a score. There is no
+ * training-metrics endpoint, so rather than quote precision and recall from
+ * nowhere, the page reports the distribution of the detections the model has
+ * recorded, read from `/api/v1/detections`.
  */
 
-const MOCK_DELAY_MS = 400
+import { monitoringService } from './monitoringService'
+import { PATCH_GRID } from './analysisService'
+import {
+  ANOMALY_TYPE_KEYS,
+  SEVERITY_KEYS,
+  STATUS_KEYS,
+  anomalyTypeLabel,
+  SEVERITY,
+  STATUS,
+} from '../lib/detections'
 
-const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-
+/** Fixed by the encoder the backend loads, not by anything configurable here. */
 const MODEL_CARD = {
-  name: 'Chroma-EO-2.0',
-  source: 'NASA / IBM geospatial foundation model',
-  sourceUrl: 'https://huggingface.co/ibm-nasa-geospatial',
-  version: 'pp-ft-0.3',
-  task: 'Change segmentation on the pipeline corridor',
-  status: 'Prototype',
-  trainedOn: '2026-08-12T00:00:00Z',
+  name: 'CROMA',
+  size: 'base',
+  source: 'Contrastive Radar-Optical Masked Autoencoder',
+  sourceUrl: 'https://github.com/antofuller/CROMA',
+  task: 'Change detection between two SAR captures of one corridor segment',
   spec: [
-    { label: 'Input', value: 'Sentinel-1 GRD, VV + VH' },
-    { label: 'Resolution', value: '10 m per pixel' },
-    { label: 'Tile size', value: '512 × 512 px' },
-    { label: 'Revisit', value: 'Every 6 to 12 days' },
-    { label: 'Fine-tuning', value: '12 epochs, AdamW' },
-    { label: 'Hardware', value: 'Google Colab T4' },
+    { label: 'Modality', value: 'SAR' },
+    { label: 'Input', value: 'GeoTIFF, 2 bands (VV + VH)' },
+    { label: 'Chip size', value: '128 × 128 px' },
+    { label: 'Patch grid', value: `${PATCH_GRID} × ${PATCH_GRID} (${PATCH_GRID ** 2} patches)` },
+    { label: 'Normalisation', value: 'Per band, mean ± 2σ, clamped to 0–1' },
+    { label: 'Change measure', value: '1 − cosine similarity of patch embeddings' },
+    { label: 'Anomaly score', value: 'max patch change + 2 × σ' },
   ],
 }
 
-const HEADLINE = {
-  precision: 0.88,
-  recall: 0.83,
-  f1: 0.85,
-  iou: 0.71,
+const share = (count, total) => (total > 0 ? count / total : 0)
+
+/** Counts a detection list by one of its keys, keeping a fixed key order. */
+function distribute(detections, keys, pick, labelFor, styleFor) {
+  return keys.map((key) => {
+    const count = detections.filter((detection) => pick(detection) === key).length
+
+    return {
+      key,
+      label: labelFor(key),
+      count,
+      share: share(count, detections.length),
+      ...styleFor(key),
+    }
+  })
 }
-
-const DATASET = {
-  tilePairs: 961,
-  splits: [
-    { label: 'Train', tiles: 673 },
-    { label: 'Validation', tiles: 144 },
-    { label: 'Test', tiles: 144 },
-  ],
-}
-
-/** Validation F1 against training F1, per epoch. */
-const CURVE = [
-  { epoch: 1, train: 0.42, validation: 0.38 },
-  { epoch: 2, train: 0.55, validation: 0.49 },
-  { epoch: 3, train: 0.63, validation: 0.58 },
-  { epoch: 4, train: 0.7, validation: 0.64 },
-  { epoch: 5, train: 0.75, validation: 0.69 },
-  { epoch: 6, train: 0.79, validation: 0.73 },
-  { epoch: 7, train: 0.82, validation: 0.77 },
-  { epoch: 8, train: 0.85, validation: 0.8 },
-  { epoch: 9, train: 0.87, validation: 0.82 },
-  { epoch: 10, train: 0.89, validation: 0.84 },
-  { epoch: 11, train: 0.9, validation: 0.85 },
-  { epoch: 12, train: 0.91, validation: 0.85 },
-]
-
-/** Per anomaly class, scored on the held-out test split. */
-const CLASSES = [
-  { label: 'Ground disturbance', precision: 0.86, recall: 0.84, support: 388 },
-  { label: 'Excavation', precision: 0.91, recall: 0.87, support: 214 },
-  { label: 'Vehicle cluster', precision: 0.83, recall: 0.79, support: 156 },
-  { label: 'New access track', precision: 0.88, recall: 0.81, support: 132 },
-  { label: 'Encroachment', precision: 0.74, recall: 0.66, support: 71 },
-]
 
 export const modelService = {
   getModel: async () => {
-    await wait(MOCK_DELAY_MS)
+    const detections = await monitoringService.getDetections()
+
+    const confidences = detections.map((detection) => detection.confidence)
+    const onCorridor = detections.filter((detection) => detection.segment != null)
+    const segmentsCovered = new Set(onCorridor.map((detection) => detection.segment)).size
+
     return {
       card: MODEL_CARD,
-      headline: HEADLINE,
-      dataset: DATASET,
-      curve: CURVE,
-      classes: CLASSES,
+      output: {
+        total: detections.length,
+        meanConfidence: confidences.length
+          ? confidences.reduce((sum, value) => sum + value, 0) / confidences.length
+          : 0,
+        minConfidence: confidences.length ? Math.min(...confidences) : 0,
+        maxConfidence: confidences.length ? Math.max(...confidences) : 0,
+        onCorridor: onCorridor.length,
+        offCorridor: detections.length - onCorridor.length,
+        segmentsCovered,
+      },
+      byType: distribute(
+        detections,
+        ANOMALY_TYPE_KEYS,
+        (detection) => detection.type,
+        anomalyTypeLabel,
+        () => ({}),
+      ),
+      bySeverity: distribute(
+        detections,
+        SEVERITY_KEYS,
+        (detection) => detection.severity,
+        (key) => SEVERITY[key].label,
+        (key) => ({ bar: SEVERITY[key].bar }),
+      ),
+      byStatus: distribute(
+        detections,
+        STATUS_KEYS,
+        (detection) => detection.status,
+        (key) => STATUS[key].label,
+        () => ({}),
+      ),
     }
   },
 }

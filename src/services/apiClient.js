@@ -41,10 +41,31 @@ export async function request(path, { method = 'GET', body, headers, ...options 
     body: body ? JSON.stringify(body) : undefined,
   })
 
+  return readResponse(response)
+}
+
+/**
+ * Multipart upload. The browser has to set `Content-Type` itself so the
+ * multipart boundary matches the body, so no content type is sent here.
+ */
+export async function requestForm(path, formData, { method = 'POST', headers, ...options } = {}) {
+  const response = await fetch(`${BASE_URL}${path}`, {
+    ...options,
+    method,
+    headers,
+    body: formData,
+  })
+
+  return readResponse(response)
+}
+
+async function readResponse(response) {
   const payload = await response.json().catch(() => null)
 
   if (!response.ok) {
-    const detailMessage = stringifyApiError(payload?.detail ?? payload?.message ?? payload?.error ?? 'Request failed')
+    const detailMessage = stringifyApiError(
+      payload?.detail ?? payload?.message ?? payload?.error ?? 'Request failed',
+    )
     throw new ApiError(detailMessage, response.status)
   }
 
@@ -56,4 +77,5 @@ export const apiClient = {
   post: (path, body, options) => request(path, { ...options, method: 'POST', body }),
   patch: (path, body, options) => request(path, { ...options, method: 'PATCH', body }),
   delete: (path, options) => request(path, { ...options, method: 'DELETE' }),
+  postForm: (path, formData, options) => requestForm(path, formData, options),
 }

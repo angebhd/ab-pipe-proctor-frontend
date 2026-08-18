@@ -2,12 +2,39 @@ import AsyncBoundary from '../components/AsyncBoundary'
 import Card from '../components/Card'
 import PageHeader from '../components/PageHeader'
 import StatCard from '../components/StatCard'
-import TrainingCurve from '../components/TrainingCurve'
 import { useAsyncData } from '../hooks/useAsyncData'
-import { formatDate } from '../lib/detections'
+import { SEGMENT_COUNT } from '../lib/corridor'
 import { modelService } from '../services/modelService'
 
 const percent = (value) => `${Math.round(value * 100)}%`
+
+/** A labelled count with the share it represents, drawn as a plain bar. */
+function DistributionRow({ label, count, share, bar = 'bg-brand-600' }) {
+  return (
+    <li>
+      <div className="flex items-baseline justify-between gap-3 text-sm">
+        <span className="text-slate-600">{label}</span>
+        <span className="font-semibold tabular-nums text-slate-900">{count}</span>
+      </div>
+      <div className="mt-1.5 h-2 rounded-full bg-slate-100">
+        <div
+          className={`h-2 rounded-full ${bar}`}
+          style={{ width: `${Math.round(share * 100)}%` }}
+        />
+      </div>
+    </li>
+  )
+}
+
+function Distribution({ rows }) {
+  return (
+    <ul className="space-y-4">
+      {rows.map((row) => (
+        <DistributionRow key={row.key} {...row} />
+      ))}
+    </ul>
+  )
+}
 
 function Model() {
   const { data, error, isLoading } = useAsyncData(modelService.getModel)
@@ -16,7 +43,7 @@ function Model() {
     <>
       <PageHeader
         title="Model"
-        description="What the detection model is, and how well it currently performs."
+        description="What the detection model is, and what it has produced so far."
       />
 
       <AsyncBoundary isLoading={isLoading} error={error}>
@@ -24,49 +51,46 @@ function Model() {
           <div className="space-y-6">
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <StatCard
-                label="Precision"
-                value={percent(data.headline.precision)}
-                hint="Of everything flagged, how much was real"
+                label="Detections recorded"
+                value={data.output.total}
+                hint="Everything the model has written to the corridor log"
               />
               <StatCard
-                label="Recall"
-                value={percent(data.headline.recall)}
-                hint="Of everything real, how much was caught"
+                label="Mean confidence"
+                value={data.output.total > 0 ? percent(data.output.meanConfidence) : '—'}
+                hint={
+                  data.output.total > 0
+                    ? `Ranging ${percent(data.output.minConfidence)} to ${percent(data.output.maxConfidence)}`
+                    : 'Nothing recorded yet'
+                }
               />
               <StatCard
-                label="F1"
-                value={data.headline.f1.toFixed(2)}
-                hint="Balance of the two"
+                label="Segments covered"
+                value={`${data.output.segmentsCovered} of ${SEGMENT_COUNT}`}
+                hint="Segments with at least one detection"
               />
               <StatCard
-                label="IoU"
-                value={data.headline.iou.toFixed(2)}
-                hint="Overlap of predicted and true areas"
+                label="Off corridor"
+                value={data.output.offCorridor}
+                hint="Recorded too far from the line to place on a segment"
               />
             </div>
 
             <div className="grid gap-6 lg:grid-cols-3">
               <Card
-                title="F1 per epoch"
-                description="Fine-tuning run pp-ft-0.3"
-                className="lg:col-span-2"
-              >
-                <TrainingCurve data={data.curve} />
-              </Card>
-
-              <Card
-                title="Base model"
+                title="How it reads a pair"
                 description={data.card.source}
+                className="lg:col-span-2"
               >
                 <dl className="space-y-3">
                   <div>
                     <dt className="text-xs uppercase tracking-wide text-slate-500">
-                      Model
+                      Encoder
                     </dt>
                     <dd className="mt-0.5 text-sm font-medium text-slate-900">
                       {data.card.name}
                       <span className="ml-2 font-mono text-xs font-normal text-slate-500">
-                        {data.card.version}
+                        {data.card.size}
                       </span>
                     </dd>
                   </div>
@@ -74,93 +98,69 @@ function Model() {
                   {data.card.spec.map(({ label, value }) => (
                     <div key={label} className="flex justify-between gap-3">
                       <dt className="text-sm text-slate-500">{label}</dt>
-                      <dd className="text-right text-sm text-slate-900">
-                        {value}
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
-
-                <a
-                  href={data.card.sourceUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-4 inline-block text-sm font-medium text-brand-700 hover:text-brand-800 hover:underline"
-                >
-                  View on Hugging Face
-                </a>
-              </Card>
-            </div>
-
-            <div className="grid gap-6 lg:grid-cols-3">
-              <Card
-                title="Performance by anomaly type"
-                description="Scored on the held-out test split"
-                className="lg:col-span-2"
-                bodyClassName=""
-              >
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-112 border-collapse text-left">
-                    <thead>
-                      <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
-                        <th scope="col" className="px-5 py-2.5 font-medium">
-                          Type
-                        </th>
-                        <th scope="col" className="px-5 py-2.5 text-right font-medium">
-                          Precision
-                        </th>
-                        <th scope="col" className="px-5 py-2.5 text-right font-medium">
-                          Recall
-                        </th>
-                        <th scope="col" className="px-5 py-2.5 text-right font-medium">
-                          Tiles
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {data.classes.map((row) => (
-                        <tr key={row.label}>
-                          <td className="px-5 py-3 text-sm text-slate-900">
-                            {row.label}
-                          </td>
-                          <td className="px-5 py-3 text-right text-sm tabular-nums text-slate-600">
-                            {row.precision.toFixed(2)}
-                          </td>
-                          <td className="px-5 py-3 text-right text-sm tabular-nums text-slate-600">
-                            {row.recall.toFixed(2)}
-                          </td>
-                          <td className="px-5 py-3 text-right text-sm tabular-nums text-slate-500">
-                            {row.support}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </Card>
-
-              <Card
-                title="Training data"
-                description={`${data.dataset.tilePairs} labelled tile pairs`}
-              >
-                <dl className="space-y-3">
-                  {data.dataset.splits.map(({ label, tiles }) => (
-                    <div key={label} className="flex justify-between gap-3">
-                      <dt className="text-sm text-slate-500">{label}</dt>
-                      <dd className="text-sm tabular-nums text-slate-900">
-                        {tiles} tiles
-                      </dd>
+                      <dd className="text-right text-sm text-slate-900">{value}</dd>
                     </div>
                   ))}
                 </dl>
 
                 <p className="mt-4 border-t border-slate-100 pt-4 text-xs leading-relaxed text-slate-500">
-                  {data.card.status} · last fine-tuned{' '}
-                  {formatDate(data.card.trainedOn)}. Figures are placeholders
-                  until the training pipeline reports real runs.
+                  {data.card.task}. The model reports where two captures differ
+                  most, not what caused the difference — the anomaly type on a
+                  recorded detection is set by whoever logs it.
                 </p>
+
+                <a
+                  href={data.card.sourceUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-3 inline-block text-sm font-medium text-brand-700 hover:text-brand-800 hover:underline"
+                >
+                  About the encoder
+                </a>
+              </Card>
+
+              <Card
+                title="Open by severity"
+                description="Read from the confidence on each detection"
+              >
+                <Distribution rows={data.bySeverity} />
               </Card>
             </div>
+
+            <div className="grid gap-6 lg:grid-cols-2">
+              <Card
+                title="By anomaly type"
+                description="What has been logged against the corridor"
+              >
+                {data.output.total > 0 ? (
+                  <Distribution rows={data.byType} />
+                ) : (
+                  <p className="py-6 text-center text-sm text-slate-500">
+                    Nothing recorded yet.
+                  </p>
+                )}
+              </Card>
+
+              <Card
+                title="By status"
+                description="Where each detection stands"
+              >
+                {data.output.total > 0 ? (
+                  <Distribution rows={data.byStatus} />
+                ) : (
+                  <p className="py-6 text-center text-sm text-slate-500">
+                    Nothing recorded yet.
+                  </p>
+                )}
+              </Card>
+            </div>
+
+            <p className="text-xs leading-relaxed text-slate-500">
+              Precision, recall, and training curves are not shown: the backend
+              exposes no evaluation endpoint, so there is nothing measured to
+              report. Everything above is counted from the detections the API
+              returns.
+            </p>
           </div>
         )}
       </AsyncBoundary>

@@ -221,7 +221,8 @@ function Settings() {
           </Card>
         </form>
 
-        {/* Detection Thresholds Section - No form submission, local state only */}
+        {/* Thresholds and notifications have no endpoint behind them yet, so
+            they are held for this page view only. */}
         <Card
           title="Detection thresholds"
           description="What the model has to see before it raises a detection"
@@ -287,6 +288,11 @@ function Settings() {
               </select>
             </Row>
           </div>
+
+          <p className="mt-5 border-t border-slate-100 pt-4 text-xs text-slate-500">
+            Not saved yet — the API stores your profile, but has no endpoint for
+            thresholds. These stay as set until you leave the page.
+          </p>
         </Card>
 
         <Card title="Notifications" description="Who gets told, and how">
@@ -313,6 +319,10 @@ function Settings() {
               hint="Monday summary of every detection and its status."
             />
           </div>
+
+          <p className="mt-5 border-t border-slate-100 pt-4 text-xs text-slate-500">
+            Not saved yet — no notification endpoint exists to send these to.
+          </p>
         </Card>
       </div>
     </>

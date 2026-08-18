@@ -29,11 +29,14 @@ are bundled and served locally — there is no request to a font CDN at runtime.
 The variable sans covers weights 100–700, so avoid `font-extrabold` and
 `font-black`, which the browser would have to synthesize.
 
-**Segments** — the corridor is not addressed by place names. It is split into
-20 equal segments (`SEGMENT_COUNT` in `src/services/monitoringService.js`),
-numbered 1 at Agadem through 20 at the terminal, and every detection carries a
-segment number. The schematic colours a whole segment by the worst severity
-still open in it rather than dropping a dot at a kilometre mark.
+**Segments** — the monitored strip is not addressed by place names. It is the
+first 20 km of pipeline north of the Sèmè terminal in Benin, cut into 20 chips
+of one kilometre each (`src/lib/corridor.js`, mirroring the model's
+`chips_metadata_v2.csv`). Detections arrive as bare coordinates and are placed
+on a segment by nearest chip centre; anything further than `MAX_OFFSET_KM` off
+stays unplaced and renders as "Off corridor". The schematic colours a whole
+segment by the worst severity still open in it rather than dropping a dot at a
+kilometre mark.
 
 **Severity** — detections are coloured by `severity-low` / `severity-medium` /
 `severity-high`. These are status colours, not chart series colours: medium sits
@@ -46,53 +49,135 @@ text label and the colour never has to be read on its own.
 |---|---|
 | `Dashboard` | KPI row, weekly detection trend, active-by-severity split, corridor schematic, recent detections |
 | `Monitoring` | Corridor schematic plus the full detection list, filterable by text, segment, severity, and status |
-| `Analysis` | Send one capture — image, capture date, and segment — to the model and read back what it makes of it |
-| `Model` | Model card for the fine-tuned Prithvi-EO-2.0, headline metrics, F1 per epoch, and per-anomaly-type scores |
-| `Settings` | Detection thresholds and notification preferences (local state only) |
+| `Analysis` | Send a pair of GeoTIFF captures — reference and current — for one segment, read back the anomaly score and changed patch, and optionally record it as a detection |
+| `Model` | What the CROMA change detector is and how it scores a pair, plus the observed distribution of recorded detections |
+| `Settings` | Account profile (saved via the API); detection thresholds and notifications (not persisted — no endpoint yet) |
 
-Detection data comes from `src/services/monitoringService.js`, model results
-from `src/services/modelService.js`, and inference from
-`src/services/analysisService.js` — all three are mocks that mirror the shapes
-the backend is expected to return. `analysisService.analyzeImage` fabricates a
-prediction from a hash of the submitted file, so the same image on the same
-segment always scores the same; swap it for a multipart `apiClient` call once
-the model is served. Swap their getters for `apiClient` calls and the
-pages should not need changes. `src/lib/detections.js` holds the labels, badge
-styles, and formatters shared across pages.
+All three services call the API — there is no mock data left in the app.
+`monitoringService` reads `/api/v1/detections` and derives the weekly trend from
+it, `analysisService` posts a multipart pair to `/api/v1/change-detection`, and
+`modelService` describes the model and counts the distributions over the same
+detection list. `src/lib/detections.js` holds the labels, badge styles, and
+formatters; `src/lib/corridor.js` holds the strip geometry and is the only place
+coordinates become a segment.
 
-> **Note:** every number on the `Model` page is a placeholder, not a measured
-> result. Replace them before the figures are shown or reported anywhere.
+Two shapes are the client's own reading rather than stored fields: **severity**
+is a threshold over the model's `confidence`, and **segment** is the nearest
+chip centre to a detection's coordinates. Both rules live in `src/lib/`.
+
+> **Note:** the `Model` page shows no precision, recall, or training curves. The
+> backend exposes no evaluation endpoint, so there is nothing measured to
+> report; everything shown is counted from live detections.
 
 ## Runbook
 
-1. Clone the repository
-```bash
-git clone https://github.com/Aicha-code/.git
-cd Pipe_Proctor/
-```
-2. Access the frontend folder
-```bash
-cd frontend
-```
-> **Note:** No environment variables are required for local development.
+The app is two processes: the FastAPI backend on `:8000` and the Vite dev
+server on `:5173`. Start the backend first — the frontend reads everything it
+displays from it, so with the API down every page shows a load error.
 
+### 1. Backend
 
-3. Install dependencies
 ```bash
+cd Pipe_Proctor/backend
+
+python3 -m venv .venv
+source .venv/bin/activate          # Windows / Git Bash: source .venv/Scripts/activate
+pip install -r requirements.txt
+```
+
+Create `Pipe_Proctor/backend/.env` (gitignored — never commit it):
+
+```bash
+SUPABASE_URL=https://<your-project>.supabase.co
+SUPABASE_KEY=<service-role key>
+JWT_SECRET_KEY=<long random string>
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+```
+
+Generate the JWT secret with:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+`SUPABASE_URL` and `SUPABASE_KEY` are required. `SupabaseDatabase.__init__`
+calls `create_client()` at import time, so a missing or blank URL stops the
+whole app from starting, not just the database.
+
+Then run it:
+
+```bash
+uvicorn main:app --reload --port 8000
+```
+
+- API: <http://127.0.0.1:8000>
+- Interactive docs: <http://127.0.0.1:8000/docs>
+- Liveness: <http://127.0.0.1:8000/health>
+
+### 2. Frontend
+
+In a second terminal, from this folder:
+
+```bash
+cp .env.example .env               # then set VITE_API_URL
 npm install
-```
-4. Run the frontend in dev mode
-
-```bash
 npm run dev
 ```
-You can also copy and paste these commands from the frontend folder:
+
+`VITE_API_URL` selects the API: `http://localhost:8000` for the local backend,
+`https://pipe-proctor.vercel.app` for the deployed one. Vite reads `.env` only
+at startup, so restart the dev server after changing it.
+
+The app runs at <http://localhost:5173>. The port is pinned with
+`strictPort`, so a busy port fails loudly rather than drifting to 5174 — the
+backend allows origins by exact port, and a silent drift turns every API call
+into an opaque CORS error.
+
+### 3. Model inference (optional)
+
+Everything except the `Analysis` page works without this. The change-detection
+endpoint needs PyTorch and the CROMA weights, which are far too large for the
+Vercel deployment; without them the endpoint returns `503` and the rest of the
+API is unaffected.
+
 ```bash
-cd frontend
-npm install
-npm run dev
+cd Pipe_Proctor/backend
+pip install -r requirements.txt -r requirements-model.txt
+
+# CROMA encoder weights (777 MB) -- gitignored, fetched from the CROMA repo
+curl -L -o model_app/models/CROMA_base.pt \
+  https://huggingface.co/antofuller/CROMA/resolve/main/CROMA_base.pt
 ```
 
+Two files also have to be in place, both from the `model` branch:
+`use_croma.py` in `backend/`, and `chips_metadata_v2.csv` in
+`backend/model_app/data/`. Restart uvicorn afterwards — the imports are
+resolved once at startup, so a running server will not pick them up.
+
+Inference takes roughly 40 seconds per pair on CPU.
+
+### Maintenance
+
+Retire detections that should not be in the log. Reports only unless you pass
+`--delete`:
+
+```bash
+cd Pipe_Proctor/backend
+python scripts/prune_detections.py --off-corridor            # dry run
+python scripts/prune_detections.py --off-corridor --delete
+python scripts/prune_detections.py --id <uuid> --delete
+```
+
+### Troubleshooting
+
+| Symptom | Cause |
+|---|---|
+| `ensurepip is not available` on `python3 -m venv` | Debian/Ubuntu ships it separately: `sudo apt install python3-venv` |
+| `SupabaseException: supabase_url is required` | `backend/.env` is missing or has no `SUPABASE_URL` |
+| Every page shows a load error | Backend is not running, or `VITE_API_URL` points somewhere else |
+| "CORS Missing Allow Origin" | Usually the backend being down, not CORS. Check it responds on `/health` first; if it does, confirm the frontend's port is in the backend's `ALLOWED_ORIGINS` |
+| `Analysis` returns 503 | Model dependencies or weights are not installed — see step 3 |
+| `Analysis` returns 404 | The `segment_id` is not in `chips_metadata_v2.csv` |
 
 # References
 - [React Documentation](https://react.dev/)

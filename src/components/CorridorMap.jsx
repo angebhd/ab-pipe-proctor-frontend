@@ -1,32 +1,36 @@
 import {
   BORDER_KM,
+  CITIES,
   CORRIDOR_LENGTH_KM,
   SEGMENTS,
   SEGMENT_COUNT,
-} from '../services/monitoringService'
+} from '../lib/corridor'
 import {
   SEVERITY,
   SEVERITY_KEYS,
   formatSegment,
+  isOpen,
   worstSeverity,
 } from '../lib/detections'
 
 // Schematic geometry: the corridor is drawn straightened and split into its
 // twenty equal segments, so a block's position is its segment, not ground
-// position.
+// position. Cities are placed by chainage, so they do line up with the ground.
 const WIDTH = 1000
-const HEIGHT = 128
+const HEIGHT = 148
 const PADDING = 28
-const BAR_Y = 44
+const BAR_Y = 64
 const BAR_HEIGHT = 30
 const GAP = 3
+const CITY_LABEL_Y = 40
+const CITY_TICK_TOP = 46
 
 const INNER_WIDTH = WIDTH - PADDING * 2
 const SLOT = INNER_WIDTH / SEGMENT_COUNT
 
 const toX = (km) => PADDING + (km / CORRIDOR_LENGTH_KM) * INNER_WIDTH
 
-/** brand-100 — cleared: something was found here, and it was dealt with. */
+/** brand-100 — resolved: something was found here, and it was dealt with. */
 const CLEARED_FILL = '#d3f8dd'
 /** slate-200 — the segment is quiet on this pass. */
 const QUIET_FILL = '#e2e8f0'
@@ -35,6 +39,9 @@ const groupBySegment = (detections) => {
   const bySegment = new Map()
 
   for (const detection of detections) {
+    // Detections too far off the line have no segment, so no block to sit in.
+    if (detection.segment == null) continue
+
     const bucket = bySegment.get(detection.segment)
     if (bucket) bucket.push(detection)
     else bySegment.set(detection.segment, [detection])
@@ -48,27 +55,27 @@ const groupBySegment = (detections) => {
  * segment. Cleared detections no longer raise the segment, they only stop it
  * reading as untouched.
  */
-function fillFor(open, cleared) {
+function fillFor(open, resolved) {
   const severity = worstSeverity(open)
   if (severity) return `var(--color-severity-${severity})`
-  return cleared.length > 0 ? CLEARED_FILL : QUIET_FILL
+  return resolved.length > 0 ? CLEARED_FILL : QUIET_FILL
 }
 
 /** Clicking a segment opens whatever most needs attention inside it. */
-function leadDetection(open, cleared) {
+function leadDetection(open, resolved) {
   const ranked = [...open].sort(
     (a, b) =>
       SEVERITY_KEYS.indexOf(a.severity) - SEVERITY_KEYS.indexOf(b.severity) ||
       new Date(b.detectedAt) - new Date(a.detectedAt),
   )
 
-  return ranked[0] ?? cleared[0] ?? null
+  return ranked[0] ?? resolved[0] ?? null
 }
 
 function Schematic({ detections, selectedId, onSelect }) {
   const bySegment = groupBySegment(detections)
   const flagged = SEGMENTS.filter(({ id }) =>
-    (bySegment.get(id) ?? []).some((detection) => detection.status !== 'cleared'),
+    (bySegment.get(id) ?? []).some(isOpen),
   ).length
 
   return (
@@ -99,15 +106,41 @@ function Schematic({ detections, selectedId, onSelect }) {
         BENIN
       </text>
 
+      {/* Reference points only. The ends anchor their labels inward so they
+          do not overhang the schematic. */}
+      {CITIES.map(({ name, km, isBorder }) => {
+        const x = toX(km)
+        const anchor = km === 0 ? 'start' : km === CORRIDOR_LENGTH_KM ? 'end' : 'middle'
+
+        return (
+          <g key={name}>
+            <text
+              x={x}
+              y={CITY_LABEL_Y}
+              textAnchor={anchor}
+              fill={isBorder ? '#475569' : '#64748b'}
+              fontSize="10.5"
+              fontWeight={isBorder ? '600' : '400'}
+            >
+              {name}
+            </text>
+            <line
+              x1={x}
+              y1={CITY_TICK_TOP}
+              x2={x}
+              y2={BAR_Y - 4}
+              stroke="#cbd5e1"
+              strokeWidth="1"
+            />
+          </g>
+        )
+      })}
+
       {SEGMENTS.map(({ id }) => {
         const inSegment = bySegment.get(id) ?? []
-        const open = inSegment.filter(
-          (detection) => detection.status !== 'cleared',
-        )
-        const cleared = inSegment.filter(
-          (detection) => detection.status === 'cleared',
-        )
-        const lead = leadDetection(open, cleared)
+        const open = inSegment.filter(isOpen)
+        const resolved = inSegment.filter((detection) => !isOpen(detection))
+        const lead = leadDetection(open, resolved)
         const isSelected =
           selectedId != null &&
           inSegment.some((detection) => detection.id === selectedId)
@@ -136,7 +169,7 @@ function Schematic({ detections, selectedId, onSelect }) {
               width={width}
               height={BAR_HEIGHT}
               rx="4"
-              fill={fillFor(open, cleared)}
+              fill={fillFor(open, resolved)}
             />
 
             {inSegment.length > 0 && (
@@ -182,7 +215,7 @@ function Schematic({ detections, selectedId, onSelect }) {
       {/* The Gaya crossing falls inside a segment rather than between two. */}
       <line
         x1={toX(BORDER_KM)}
-        y1={BAR_Y - 12}
+        y1={BAR_Y - 4}
         x2={toX(BORDER_KM)}
         y2={BAR_Y + BAR_HEIGHT + 6}
         stroke="#64748b"
@@ -240,7 +273,7 @@ function CorridorMap({ detections, selectedId, onSelect }) {
         ))}
         <LegendSwatch
           style={{ backgroundColor: CLEARED_FILL }}
-          label="Cleared"
+          label="Resolved"
         />
         <LegendSwatch style={{ backgroundColor: QUIET_FILL }} label="Quiet" />
         <span className="ml-auto text-slate-400">

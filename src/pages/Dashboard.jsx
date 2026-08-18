@@ -8,6 +8,7 @@ import DetectionTable from '../components/DetectionTable'
 import DetectionsTrend from '../components/DetectionsTrend'
 import Modal from '../components/Modal'
 import PageHeader from '../components/PageHeader'
+import SeverityBars from '../components/SeverityBars'
 import StatCard from '../components/StatCard'
 import {
   AlertIcon,
@@ -16,12 +17,9 @@ import {
   SatelliteIcon,
 } from '../components/icons'
 import { useAsyncData } from '../hooks/useAsyncData'
-import { formatRelativeDays, formatSegment } from '../lib/detections'
-import {
-  CORRIDOR_LENGTH_KM,
-  SEGMENT_COUNT,
-  monitoringService,
-} from '../services/monitoringService'
+import { formatRelativeDays, formatSegment, isOpen } from '../lib/detections'
+import { CORRIDOR_LENGTH_KM, SEGMENT_COUNT } from '../lib/corridor'
+import { monitoringService } from '../services/monitoringService'
 import { PATHS } from '../routes/paths'
 
 const RECENT_COUNT = 5
@@ -30,12 +28,14 @@ function Dashboard() {
   const { data, error, isLoading } = useAsyncData(monitoringService.getOverview)
   const [selected, setSelected] = useState(null)
 
-  const active = data
-    ? data.detections.filter((detection) => detection.status !== 'cleared')
-    : []
-  const highSeverity = active.filter(
-    (detection) => detection.severity === 'high',
-  )
+  const detections = data?.detections ?? []
+  const active = detections.filter(isOpen)
+  const highSeverity = active.filter((detection) => detection.severity === 'high')
+
+  // Only detections that land on the corridor can be attributed to a segment,
+  // so coverage is counted over those rather than over everything recorded.
+  const placed = detections.filter((detection) => detection.segment != null)
+  const segmentsHit = new Set(placed.map((detection) => detection.segment)).size
 
   return (
     <>
@@ -51,7 +51,7 @@ function Dashboard() {
               <StatCard
                 label="Active detections"
                 value={active.length}
-                hint="Awaiting review or inspection"
+                hint={`${detections.length} recorded in total`}
                 icon={AlertIcon}
               />
               <StatCard
@@ -65,15 +65,21 @@ function Dashboard() {
                 icon={GaugeIcon}
               />
               <StatCard
-                label="Segments scanned"
-                value={`${data.lastPass.coveredSegments} of ${SEGMENT_COUNT}`}
-                hint={`Full ${CORRIDOR_LENGTH_KM.toLocaleString('en-US')} km corridor on the last pass`}
+                label="Segments affected"
+                value={`${segmentsHit} of ${SEGMENT_COUNT}`}
+                hint={`Across the ${CORRIDOR_LENGTH_KM.toLocaleString('en-US')} km corridor`}
                 icon={LayersIcon}
               />
               <StatCard
-                label="Last satellite pass"
-                value={formatRelativeDays(data.lastPass.capturedAt)}
-                hint={`Next pass ${formatRelativeDays(data.lastPass.nextPassAt)}`}
+                label="Latest detection"
+                value={
+                  data.latest ? formatRelativeDays(data.latest.detectedAt) : '—'
+                }
+                hint={
+                  data.latest
+                    ? `From ${data.latest.imageId}`
+                    : 'Nothing recorded yet'
+                }
                 icon={SatelliteIcon}
               />
             </div>
@@ -88,20 +94,23 @@ function Dashboard() {
               </Card>
 
               <Card
-                title="Niger Benin Pipeline"
-                description={`${active.length} open or in review`}
+                title="Open by severity"
+                description={`${active.length} awaiting review or inspection`}
               >
-                {/* <SeverityBars detections={active} /> */}
-                <p>MAP</p>
+                <SeverityBars detections={active} />
               </Card>
             </div>
 
             <Card
               title="Corridor overview"
-              description={`${data.detections.length} detections across ${SEGMENT_COUNT} segments`}
+              description={
+                placed.length === detections.length
+                  ? `${detections.length} detections across ${SEGMENT_COUNT} segments`
+                  : `${placed.length} of ${detections.length} detections fall on the corridor`
+              }
             >
               <CorridorMap
-                detections={data.detections}
+                detections={detections}
                 selectedId={selected?.id}
                 onSelect={setSelected}
               />
@@ -121,8 +130,9 @@ function Dashboard() {
               }
             >
               <DetectionTable
-                detections={data.detections.slice(0, RECENT_COUNT)}
+                detections={detections.slice(0, RECENT_COUNT)}
                 onSelect={setSelected}
+                emptyMessage="No detections recorded yet."
               />
             </Card>
           </div>
@@ -132,7 +142,7 @@ function Dashboard() {
       <Modal
         open={Boolean(selected)}
         onClose={() => setSelected(null)}
-        title={selected ? `Detection ${selected.id}` : ''}
+        title={selected ? `Detection ${selected.id.slice(0, 8)}` : ''}
         description={selected ? formatSegment(selected.segment) : ''}
       >
         {selected && <DetectionDetail detection={selected} />}
